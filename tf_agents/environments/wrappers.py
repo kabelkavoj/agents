@@ -63,6 +63,9 @@ class PyEnvironmentBaseWrapper(py_environment.PyEnvironment):
   def _step(self, action):
     return self._env.step(action)
 
+  def get_info(self):
+    return self._env.get_info()
+
   def observation_spec(self):
     return self._env.observation_spec()
 
@@ -199,9 +202,11 @@ class ActionRepeat(PyEnvironmentBaseWrapper):
     for _ in range(self._times):
       time_step = self._env.step(action)
       total_reward += time_step.reward
-      if time_step.is_last():
+      if time_step.is_first() or time_step.is_last():
         break
 
+    total_reward = np.asarray(total_reward,
+                              dtype=np.asarray(time_step.reward).dtype)
     return ts.TimeStep(time_step.step_type, total_reward, time_step.discount,
                        time_step.observation)
 

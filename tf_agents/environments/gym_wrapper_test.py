@@ -60,13 +60,14 @@ class GymWrapperSpecTest(test_utils.TestCase):
     np.testing.assert_array_equal(np.array([1], dtype=np.int), spec.maximum)
 
   def test_spec_from_gym_space_box_scalars(self):
-    box_space = gym.spaces.Box(-1.0, 1.0, (3, 4))
-    spec = gym_wrapper._spec_from_gym_space(box_space)
+    for dtype in (np.float32, np.float64):
+      box_space = gym.spaces.Box(-1.0, 1.0, (3, 4), dtype=dtype)
+      spec = gym_wrapper._spec_from_gym_space(box_space)
 
-    self.assertEqual((3, 4), spec.shape)
-    self.assertEqual(np.float32, spec.dtype)
-    np.testing.assert_array_equal(-np.ones((3, 4)), spec.minimum)
-    np.testing.assert_array_equal(np.ones((3, 4)), spec.maximum)
+      self.assertEqual((3, 4), spec.shape)
+      self.assertEqual(dtype, spec.dtype)
+      np.testing.assert_array_equal(-np.ones((3, 4)), spec.minimum)
+      np.testing.assert_array_equal(np.ones((3, 4)), spec.maximum)
 
   def test_spec_from_gym_space_box_scalars_simplify_bounds(self):
     box_space = gym.spaces.Box(-1.0, 1.0, (3, 4))
@@ -77,14 +78,37 @@ class GymWrapperSpecTest(test_utils.TestCase):
     np.testing.assert_array_equal(np.array([-1], dtype=np.int), spec.minimum)
     np.testing.assert_array_equal(np.array([1], dtype=np.int), spec.maximum)
 
-  def test_spec_from_gym_space_box_array(self):
-    box_space = gym.spaces.Box(np.array([-1.0, -2.0]), np.array([2.0, 4.0]))
-    spec = gym_wrapper._spec_from_gym_space(box_space)
+  def test_spec_from_gym_space_when_simplify_box_bounds_false(self):
+    # testing on gym.spaces.Dict which makes recursive calls to
+    # _spec_from_gym_space
+    box_space = gym.spaces.Box(-1.0, 1.0, (2,))
+    dict_space = gym.spaces.Dict({'box1': box_space, 'box2': box_space})
+    spec = gym_wrapper._spec_from_gym_space(dict_space,
+                                            simplify_box_bounds=False)
 
-    self.assertEqual((2,), spec.shape)
-    self.assertEqual(np.float32, spec.dtype)
-    np.testing.assert_array_equal(np.array([-1.0, -2.0]), spec.minimum)
-    np.testing.assert_array_equal(np.array([2.0, 4.0]), spec.maximum)
+    self.assertEqual((2,), spec['box1'].shape)
+    self.assertEqual((2,), spec['box2'].shape)
+    self.assertEqual(np.float32, spec['box1'].dtype)
+    self.assertEqual(np.float32, spec['box2'].dtype)
+    np.testing.assert_array_equal(np.array([-1, -1], dtype=np.int),
+                                  spec['box1'].minimum)
+    np.testing.assert_array_equal(np.array([1, 1], dtype=np.int),
+                                  spec['box1'].maximum)
+    np.testing.assert_array_equal(np.array([-1, -1], dtype=np.int),
+                                  spec['box2'].minimum)
+    np.testing.assert_array_equal(np.array([1, 1], dtype=np.int),
+                                  spec['box2'].maximum)
+
+  def test_spec_from_gym_space_box_array(self):
+    for dtype in (np.float32, np.float64):
+      box_space = gym.spaces.Box(np.array([-1.0, -2.0]), np.array([2.0, 4.0]),
+                                 dtype=dtype)
+      spec = gym_wrapper._spec_from_gym_space(box_space)
+
+      self.assertEqual((2,), spec.shape)
+      self.assertEqual(dtype, spec.dtype)
+      np.testing.assert_array_equal(np.array([-1.0, -2.0]), spec.minimum)
+      np.testing.assert_array_equal(np.array([2.0, 4.0]), spec.maximum)
 
   def test_spec_from_gym_space_tuple(self):
     tuple_space = gym.spaces.Tuple((gym.spaces.Discrete(2),
@@ -190,9 +214,16 @@ class GymWrapperSpecTest(test_utils.TestCase):
     )
 
   def test_spec_from_gym_space_dtype_map(self):
+    class Box(gym.spaces.Box):
+      """Box space without the dtype property."""
+
+      def __init__(self, *args, **kwargs):
+        super(Box, self).__init__(*args, **kwargs)
+        del self.dtype
+
     tuple_space = gym.spaces.Tuple((
         gym.spaces.Discrete(2),
-        gym.spaces.Box(0, 1, (3, 4)),
+        Box(0, 1, (3, 4)),
         gym.spaces.Tuple((gym.spaces.Discrete(2), gym.spaces.Discrete(3))),
         gym.spaces.Dict({
             'spec_1':
@@ -200,7 +231,7 @@ class GymWrapperSpecTest(test_utils.TestCase):
             'spec_2':
                 gym.spaces.Tuple((
                     gym.spaces.Discrete(2),
-                    gym.spaces.Box(0, 1, (3, 4)),
+                    Box(0, 1, (3, 4)),
                 )),
         }),
     ))
